@@ -2,6 +2,7 @@ import os
 import time
 import numpy as np
 import os.path as osp
+from baselines.ppo2.buffer import Buffer
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -12,6 +13,7 @@ except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
 
+rgb_weights = [0.2989, 0.5870, 0.1140]
 
 def constfn(val):
     def f(_):
@@ -94,10 +96,14 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     ob_space = env.observation_space
     ac_space = env.action_space
 
+
     # Calculate the batch_size
     nbatch = nenvs * nsteps
     nbatch_train = nbatch // nminibatches
     is_mpi_root = (MPI is None or MPI.COMM_WORLD.Get_rank() == 0)
+
+    # data buffer
+    buf = Buffer(nbatch* 20)
 
     # Instantiate the model object (that creates act_model and train_model)
     if model_fn is None:
@@ -143,15 +149,18 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         # returns, actions, values, neglogpacs, masks (16384,)
         # states None
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
+        
+        # add flattened data into into buffer
+        obs_grey = np.dot(obs, rgb_weights)
+        buf.add(obs_grey.reshape((-1,)).tolist())
 
-        # convert and normalize observation to 64 x 64
-        obs_grey = np.dot(obs, rgb_weights)/255.
-        # compute smirl reward (Normal Distribution)
+        # compute mean and std from buffer
+        mu, sd = buf.compute_stats()
+        alpha = 1e-4
+        # compute smirl reward
         obs_flat = obs_grey.reshape((nbatch, -1))
-        mu = obs_flat.mean(axis=1).reshape((nbatch,1))
-        sd = obs_flat.std(axis=1).reshape((nbatch,1))
-        alpha = 1e-3
         smirl_r = - (np.log(sd) + (obs_flat - mu)**2/(2*sd**2)).sum(axis=1)
+        
 
         if eval_env is not None:
             eval_obs, eval_returns, eval_masks, eval_actions, eval_values, eval_neglogpacs, eval_states, eval_epinfos = eval_runner.run() #pylint: disable=E0632
@@ -168,6 +177,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             # Index of each element of batch_size
             # Create the indices array
             inds = np.arange(nbatch)
+            
+            # noptepochs 3, nbatch_train 2048
             for _ in range(noptepochs):
                 # Randomize the indexes
                 np.random.shuffle(inds)

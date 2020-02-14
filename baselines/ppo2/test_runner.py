@@ -160,14 +160,14 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         # pyplot.show()
 
         # convert and normalize observation to 64 x 64
-        obs_grey = np.dot(obs, rgb_weights)/255.
+        obs_grey = np.dot(obs, rgb_weights)
 
         obs_flat = obs_grey.reshape((nbatch, -1))
         mu = obs_flat.mean(axis=1).reshape((nbatch,1))
         sd = obs_flat.std(axis=1).reshape((nbatch,1))
         alpha = 1e-3
         smirl_r = - (np.log(sd) + (obs_flat - mu)**2/(2*sd**2)).sum(axis=1)
-        print(returns + alpha*smirl_r)
+        print(alpha*smirl_r)
         print(returns)
 
         # for i in range(1):
