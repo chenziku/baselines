@@ -1,8 +1,6 @@
 import numpy as np
 import random
 
-from baselines.common.segment_tree import SumSegmentTree, MinSegmentTree
-
 rgb_weights = [0.2989, 0.5870, 0.1140]
 
 class Buffer(object):

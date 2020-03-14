@@ -2,7 +2,9 @@ import os
 import time
 import numpy as np
 import os.path as osp
+import tensorflow as tf
 from baselines.ppo2.buffer import Buffer
+from baselines.ppo2.cvae import CVAE, compute_apply_gradients
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -75,8 +77,6 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     **network_kwargs:                 keyword arguments to the policy / network builder. See baselines.common/policies.py/build_policy and arguments to a particular type of network
                                       For instance, 'mlp' network architecture has arguments num_hidden and num_layers.
 
-
-
     '''
 
     set_global_seeds(seed)
@@ -132,6 +132,11 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     tfirststart = time.perf_counter()
 
     nupdates = total_timesteps//nbatch
+
+    latent_dim = 100
+    vae = CVAE(latent_dim)
+    vae_optim = tf.keras.optimizers.Adam(1e-4)
+
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
         # Start timer
@@ -152,15 +157,23 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         
         # add flattened data into into buffer
         obs_grey = np.dot(obs, rgb_weights)
-        buf.add(obs_grey.reshape((-1,)).tolist())
-
-        # compute mean and std from buffer
-        mu, sd = buf.compute_stats()
-        alpha = 1e-5
-        # compute smirl reward
-        obs_flat = obs_grey.reshape((nbatch, -1))
-        smirl_r = - (np.log(sd) + (obs_flat - mu)**2/(2*sd**2)).sum(axis=1)
         
+        print(obs_grey.shape)
+
+        for x in obs_grey:
+            train_x = x.reshape((64,64,1))
+            compute_apply_gradients(vae, train_x, vae_optim)
+            print(x.shape)
+            break
+
+        # buf.add(obs_grey.reshape((-1,)).tolist())
+
+        # # compute mean and std from buffer
+        # mu, sd = buf.compute_stats()
+        # alpha = 1e-4
+        # # compute smirl reward
+        # obs_flat = obs_grey.reshape((nbatch, -1))
+        # smirl_r = - (np.log(sd) + (obs_flat - mu)**2/(2*sd**2)).sum(axis=1)
 
         if eval_env is not None:
             eval_obs, eval_returns, eval_masks, eval_actions, eval_values, eval_neglogpacs, eval_states, eval_epinfos = eval_runner.run() #pylint: disable=E0632
