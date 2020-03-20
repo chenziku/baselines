@@ -210,22 +210,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
                 for start in range(0, nbatch, nbatch_train):
                     end = start + nbatch_train
                     mbinds = inds[start:end]
-                    slices = (arr[mbinds] for arr in (obs, returns + alpha*smirl_r, masks, actions, values, neglogpacs))
+                    slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices))
-        # else: # recurrent version
-        #     assert nenvs % nminibatches == 0
-        #     envsperbatch = nenvs // nminibatches
-        #     envinds = np.arange(nenvs)
-        #     flatinds = np.arange(nenvs * nsteps).reshape(nenvs, nsteps)
-        #     for _ in range(noptepochs):
-        #         np.random.shuffle(envinds)
-        #         for start in range(0, nenvs, envsperbatch):
-        #             end = start + envsperbatch
-        #             mbenvinds = envinds[start:end]
-        #             mbflatinds = flatinds[mbenvinds].ravel()
-        #             slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-        #             mbstates = states[mbenvinds]
-        #             mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
 
         # Feedforward --> get losses --> update
         lossvals = np.mean(mblossvals, axis=0)

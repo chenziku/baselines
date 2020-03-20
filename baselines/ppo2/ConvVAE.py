@@ -63,14 +63,41 @@ class ConvVAE(object):
         
         self._init_session()
 
-
-
     def _build_graph(self):
         self.graph = tf.Graph()
         with self.graph.as_default():
             self.input_tensor = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
 
+            # Encoder
+            h = tf.layers.conv2d(self.input_tensor, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
+            h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu, name="enc_conv2")
+            h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu, name="enc_conv3")
+            h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu, name="enc_conv4")
+            # h = tf.reshape(h, [-1, 3 * 8 * 256])
+            h = conv_to_fc(h)
 
+            # VAE
+            self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
+            self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
+            self.sigma = tf.exp(self.logvar / 2.0)
+            self.epsilon = tf.random_normal([self.batch_size, self.z_size])
+            # self.epsilon = tf.random_normal([None, self.z_size])
+            # self.z = self.mu + self.sigma * self.epsilon
+            if self.is_training:
+                self.z = self.mu + self.sigma * self.epsilon
+            else:
+                self.z = self.mu
+
+            # Decoder
+            # h = tf.layers.dense(self.z, 3 * 8 * 256, name="dec_fc")
+            # h = tf.reshape(h, [-1, 3, 8, 256])
+            h = tf.layers.dense(self.z, 3 * 3 * 256, name="dec_fc")
+            h = tf.reshape(h, [-1, 3, 3, 256])
+            h = tf.layers.conv2d_transpose(h, 128, 3, strides=2, activation=tf.nn.relu, name="dec_deconv1")
+            h = tf.layers.conv2d_transpose(h, 64, 3, strides=2, activation=tf.nn.relu, name="dec_deconv2")
+            h = tf.layers.conv2d_transpose(h, 32, 4, strides=2, activation=tf.nn.relu, name="dec_deconv3")
+            self.output_tensor = tf.layers.conv2d_transpose(h, 3, 2, strides=2, activation=tf.nn.sigmoid,
+                                                            name="dec_deconv4")
 
             # train ops
             if self.is_training:
@@ -244,38 +271,6 @@ class ConvVAE(object):
         model.sess.run(restores)
 
         return model
-
-
-            # Encoder
-            h = tf.layers.conv2d(self.input_tensor, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
-            h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu, name="enc_conv2")
-            h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu, name="enc_conv3")
-            h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu, name="enc_conv4")
-            # h = tf.reshape(h, [-1, 3 * 8 * 256])
-            h = conv_to_fc(h)
-
-            # VAE
-            self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
-            self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
-            self.sigma = tf.exp(self.logvar / 2.0)
-            self.epsilon = tf.random_normal([self.batch_size, self.z_size])
-            # self.epsilon = tf.random_normal([None, self.z_size])
-            # self.z = self.mu + self.sigma * self.epsilon
-            if self.is_training:
-                self.z = self.mu + self.sigma * self.epsilon
-            else:
-                self.z = self.mu
-
-            # Decoder
-            # h = tf.layers.dense(self.z, 3 * 8 * 256, name="dec_fc")
-            # h = tf.reshape(h, [-1, 3, 8, 256])
-            h = tf.layers.dense(self.z, 3 * 3 * 256, name="dec_fc")
-            h = tf.reshape(h, [-1, 3, 3, 256])
-            h = tf.layers.conv2d_transpose(h, 128, 3, strides=2, activation=tf.nn.relu, name="dec_deconv1")
-            h = tf.layers.conv2d_transpose(h, 64, 3, strides=2, activation=tf.nn.relu, name="dec_deconv2")
-            h = tf.layers.conv2d_transpose(h, 32, 4, strides=2, activation=tf.nn.relu, name="dec_deconv3")
-            self.output_tensor = tf.layers.conv2d_transpose(h, 3, 2, strides=2, activation=tf.nn.sigmoid,
-                                                            name="dec_deconv4")
 
 
 class VAEController:
