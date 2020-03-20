@@ -4,7 +4,7 @@ import numpy as np
 import os.path as osp
 import tensorflow as tf
 from baselines.ppo2.buffer import Buffer
-from baselines.ppo2.cvae import CVAE, compute_apply_gradients
+from baselines.ppo2.cvae import CVAE, compute_apply_gradients, compute_loss
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -15,6 +15,7 @@ except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
 
+tf.enable_eager_execution()
 rgb_weights = [0.2989, 0.5870, 0.1140]
 
 def constfn(val):
@@ -80,6 +81,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     '''
 
     set_global_seeds(seed)
+    
+    # tf.executing_eagerly()
 
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
@@ -157,14 +160,34 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         
         # add flattened data into into buffer
         obs_grey = np.dot(obs, rgb_weights)
-        
-        print(obs_grey.shape)
 
-        for x in obs_grey:
-            train_x = x.reshape((64,64,1))
-            compute_apply_gradients(vae, train_x, vae_optim)
-            print(x.shape)
-            break
+        # train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(TRAIN_BUF).batch(BATCH_SIZE)
+        # test_dataset = tf.data.Dataset.from_tensor_slices(test_images).shuffle(TEST_BUF).batch(BATCH_SIZE) 
+
+        train_x = obs_grey.reshape((16384,64,64,1))
+        loss = compute_apply_gradients(vae, train_x, vae_optim)
+        
+        x = tf.random.shuffle(train_x)[0:100]
+
+        smirl_r = compute_loss(vae, x)
+
+        tf.print(tf.make_ndarray(smirl_r))
+
+        # alpha = 1e-4
+
+        # loss = tf.keras.metrics.Mean()
+        # loss(compute_loss(vae, x))
+        # elbo = -loss.result()
+
+        # print(type(elbo))
+        # print('Loss {}'.format(loss.result()))
+        # break
+
+        # for x in obs_grey:
+        #     train_x = x.reshape((64,64,1))
+        #     loss = compute_apply_gradients(vae, train_x, vae_optim)
+        #     print(loss)
+        #     break
 
         # buf.add(obs_grey.reshape((-1,)).tolist())
 

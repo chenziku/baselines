@@ -32,8 +32,8 @@ class CVAE(tf.keras.Model):
         self.generative_net = tf.keras.Sequential(
             [
               tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-              tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
-              tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+              tf.keras.layers.Dense(units=16*16*32, activation=tf.nn.relu),
+              tf.keras.layers.Reshape(target_shape=(16, 16, 32)),
               tf.keras.layers.Conv2DTranspose(
                   filters=64,
                   kernel_size=3,
@@ -82,6 +82,8 @@ def log_normal_pdf(sample, mean, logvar, raxis=1):
 
 @tf.function
 def compute_loss(model, x):
+    if x.dtype == 'float64':
+        x = tf.cast(x, 'float32')
     mean, logvar = model.encode(x)
     z = model.reparameterize(mean, logvar)
     x_logit = model.decode(z)
@@ -90,6 +92,7 @@ def compute_loss(model, x):
     logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
     logpz = log_normal_pdf(z, 0., 0.)
     logqz_x = log_normal_pdf(z, mean, logvar)
+    print(-tf.reduce_mean(logpx_z + logpz - logqz_x))
     return -tf.reduce_mean(logpx_z + logpz - logqz_x)
 
 @tf.function
@@ -98,4 +101,5 @@ def compute_apply_gradients(model, x, optimizer):
         loss = compute_loss(model, x)
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    return loss
 
