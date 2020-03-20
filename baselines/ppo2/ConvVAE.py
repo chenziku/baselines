@@ -4,259 +4,217 @@ import cloudpickle
 import numpy as np
 import tensorflow as tf
 
+import numpy as np
+import os
+import json
 
-def conv_to_fc(input_tensor):
-    """
-    Reshapes a Tensor from a convolutional network to a Tensor for a fully connected network
-    :param input_tensor: (TensorFlow Tensor) The convolutional input tensor
-    :return: (TensorFlow Tensor) The fully connected output tensor
-    """
-    n_hidden = np.prod([v.value for v in input_tensor.get_shape()[1:]])
-    input_tensor = tf.reshape(input_tensor, [-1, n_hidden])
-    return input_tensor
+def normalize(data):
+    return data/255.0
+
+
+def denormalize(data):
+    return data * 255.0
 
 
 class ConvVAE(object):
-    """
-    VAE model.
-    :param z_size: (int) latent space dimension
-    :param batch_size: (int)
-    :param learning_rate: (float)
-    :param kl_tolerance: (float)
-    :param is_training: (bool)
-    :param beta: (float) weight for KL loss
-    :param reuse: (bool)
-    """
+  def __init__(self, z_size=512, batch_size=100, learning_rate=0.0001, kl_tolerance=0.5, is_training=True, reuse=False, gpu_mode=True):
+    self.z_size = z_size
+    self.batch_size = batch_size
+    self.learning_rate = learning_rate
+    self.is_training = is_training
+    self.kl_tolerance = kl_tolerance
+    self.reuse = reuse
+    with tf.variable_scope('conv_vae', reuse=self.reuse):
+      if not gpu_mode:
+        with tf.device('/cpu:0'):
+          tf.logging.info('Model using cpu.')
+          self._build_graph()
+      else:
+        tf.logging.info('Model using gpu.')
+        self._build_graph()
+    self._init_session()
 
-    def __init__(self, z_size=512, batch_size=100, learning_rate=0.0001,
-                 kl_tolerance=0.5, is_training=True, beta=1.0, reuse=False):
-        self.z_size = z_size
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.is_training = is_training
-        self.kl_tolerance = kl_tolerance
-        self.beta = beta
-        self.reuse = reuse
-        self.graph = None
-        self.input_tensor = None
-        self.output_tensor = None
+  def _build_graph(self):
+    self.g = tf.Graph()
+    with self.g.as_default():
 
-        with tf.variable_scope('conv_vae', reuse=self.reuse):
-            self._build_graph()
+        self.x = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
 
-        with self.graph.as_default():
-            self.params = tf.trainable_variables()
+        # # Encoder
+        # h = tf.layers.conv2d(self.input_tensor, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
+        # h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu, name="enc_conv2")
+        # h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu, name="enc_conv3")
+        # h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu, name="enc_conv4")
+        # # h = tf.reshape(h, [-1, 3 * 8 * 256])
+        # h = conv_to_fc(h)
 
-        self._init_session()
+        # # VAE
+        # self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
+        # self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
+        # self.sigma = tf.exp(self.logvar / 2.0)
+        # self.epsilon = tf.random_normal([self.batch_size, self.z_size])
+        # # self.epsilon = tf.random_normal([None, self.z_size])
+        # # self.z = self.mu + self.sigma * self.epsilon
+        # if self.is_training:
+        #     self.z = self.mu + self.sigma * self.epsilon
+        # else:
+        #     self.z = self.mu
 
-    def _build_graph(self):
-        self.graph = tf.Graph()
-        with self.graph.as_default():
-            self.input_tensor = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
+        # # Decoder
+        # # h = tf.layers.dense(self.z, 3 * 8 * 256, name="dec_fc")
+        # # h = tf.reshape(h, [-1, 3, 8, 256])
+        # h = tf.layers.dense(self.z, 3 * 3 * 256, name="dec_fc")
+        # h = tf.reshape(h, [-1, 3, 3, 256])
+        # h = tf.layers.conv2d_transpose(h, 128, 3, strides=2, activation=tf.nn.relu, name="dec_deconv1")
+        # h = tf.layers.conv2d_transpose(h, 64, 3, strides=2, activation=tf.nn.relu, name="dec_deconv2")
+        # h = tf.layers.conv2d_transpose(h, 32, 4, strides=2, activation=tf.nn.relu, name="dec_deconv3")
+        # self.output_tensor = tf.layers.conv2d_transpose(h, 3, 2, strides=2, activation=tf.nn.sigmoid,
+        #                                                 name="dec_deconv4")
 
-            # Encoder
-            h = tf.layers.conv2d(self.input_tensor, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
-            h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu, name="enc_conv2")
-            h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu, name="enc_conv3")
-            h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu, name="enc_conv4")
-            # h = tf.reshape(h, [-1, 3 * 8 * 256])
-            h = conv_to_fc(h)
 
-            # VAE
-            self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
-            self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
-            self.sigma = tf.exp(self.logvar / 2.0)
-            self.epsilon = tf.random_normal([self.batch_size, self.z_size])
-            # self.epsilon = tf.random_normal([None, self.z_size])
-            # self.z = self.mu + self.sigma * self.epsilon
-            if self.is_training:
-                self.z = self.mu + self.sigma * self.epsilon
-            else:
-                self.z = self.mu
+        # Encoder
+        h = tf.layers.conv2d(self.x, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
+        h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu, name="enc_conv2")
+        h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu, name="enc_conv3")
+        h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu, name="enc_conv4")
+        h = tf.reshape(h, [-1, 3*8*256])
 
-            # Decoder
-            # h = tf.layers.dense(self.z, 3 * 8 * 256, name="dec_fc")
-            # h = tf.reshape(h, [-1, 3, 8, 256])
-            h = tf.layers.dense(self.z, 3 * 3 * 256, name="dec_fc")
-            h = tf.reshape(h, [-1, 3, 3, 256])
-            h = tf.layers.conv2d_transpose(h, 128, 3, strides=2, activation=tf.nn.relu, name="dec_deconv1")
-            h = tf.layers.conv2d_transpose(h, 64, 3, strides=2, activation=tf.nn.relu, name="dec_deconv2")
-            h = tf.layers.conv2d_transpose(h, 32, 4, strides=2, activation=tf.nn.relu, name="dec_deconv3")
-            self.output_tensor = tf.layers.conv2d_transpose(h, 3, 2, strides=2, activation=tf.nn.sigmoid,
-                                                            name="dec_deconv4")
+        # VAE
+        self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
+        self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
+        self.sigma = tf.exp(self.logvar / 2.0)
+        self.epsilon = tf.random_normal([self.batch_size, self.z_size])
+        self.z = self.mu + self.sigma * self.epsilon
 
-            # train ops
-            if self.is_training:
-                self.global_step = tf.Variable(0, name='global_step', trainable=False)
-                # reconstruction loss
-                self.r_loss = tf.reduce_sum(
-                    tf.square(self.input_tensor - self.output_tensor),
-                    reduction_indices=[1, 2, 3]
-                )
-                self.r_loss = tf.reduce_mean(self.r_loss)
+        # Decoder
+        h = tf.layers.dense(self.z, 3*8*256, name="dec_fc")
+        h = tf.reshape(h, [-1, 3, 8, 256])
+        h = tf.layers.conv2d_transpose(h, 128, 4, strides=2, activation=tf.nn.relu, name="dec_deconv1")
+        h = tf.layers.conv2d_transpose(h, 64, 4, strides=2, activation=tf.nn.relu, name="dec_deconv2")
+        h = tf.layers.conv2d_transpose(h, 32, 5, strides=2, activation=tf.nn.relu, name="dec_deconv3")
+        self.y = tf.layers.conv2d_transpose(h, 3, 4, strides=2, activation=tf.nn.sigmoid, name="dec_deconv4")
 
-                # augmented kl loss per dim
-                self.kl_loss = - 0.5 * tf.reduce_sum(
-                    (1 + self.logvar - tf.square(self.mu) - tf.exp(self.logvar)),
-                    reduction_indices=1
-                )
-                if self.kl_tolerance > 0:
-                    self.kl_loss = tf.maximum(self.kl_loss, self.kl_tolerance * self.z_size)
-                self.kl_loss = tf.reduce_mean(self.kl_loss)
+        # train ops
+        if self.is_training:
+            self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
-                self.loss = self.r_loss + self.beta * self.kl_loss
+            eps = 1e-6 # avoid taking log of zero
 
-                # training
-                self.lr = tf.Variable(self.learning_rate, trainable=False)
-                self.optimizer = tf.train.AdamOptimizer(self.lr)
-                grads = self.optimizer.compute_gradients(self.loss)  # can potentially clip gradients here.
+            # reconstruction loss
+            self.r_loss = tf.reduce_sum(
+              tf.square(self.x - self.y),
+              reduction_indices = [1,2,3]
+            )
+            self.r_loss = tf.reduce_mean(self.r_loss)
 
-                self.train_op = self.optimizer.apply_gradients(
-                    grads, global_step=self.global_step, name='train_step')
+            # augmented kl loss per dim
+            self.kl_loss = - 0.5 * tf.reduce_sum(
+              (1 + self.logvar - tf.square(self.mu) - tf.exp(self.logvar)),
+              reduction_indices = 1
+            )
+            self.kl_loss = tf.maximum(self.kl_loss, self.kl_tolerance * self.z_size)
+            self.kl_loss = tf.reduce_mean(self.kl_loss)
 
-            # initialize vars
-            self.init = tf.global_variables_initializer()
+            self.loss = self.r_loss + self.kl_loss
 
-    def _init_session(self):
-        """Launch tensorflow session and initialize variables"""
-        self.sess = tf.Session(graph=self.graph)
-        self.sess.run(self.init)
+            # training
+            self.lr = tf.Variable(self.learning_rate, trainable=False)
+            self.optimizer = tf.train.AdamOptimizer(self.lr)
+            grads = self.optimizer.compute_gradients(self.loss) # can potentially clip gradients here.
 
-    def close_sess(self):
-        """ Close tensorflow session """
-        self.sess.close()
+            self.train_op = self.optimizer.apply_gradients(grads, global_step=self.global_step, name='train_step')
 
-    def encode(self, input_tensor):
-        """
-        :param input_tensor: (np.ndarray)
-        :return: (np.ndarray)
-        """
-        return self.sess.run(self.z, feed_dict={self.input_tensor: input_tensor})
+        # initialize vars
+        self.init = tf.global_variables_initializer()
 
-    def decode(self, z):
-        """
-        :param z: (np.ndarray)
-        :return: (np.ndarray)
-        """
-        return self.sess.run(self.output_tensor, feed_dict={self.z: z})
+  def _init_session(self):
+    """Launch TensorFlow session and initialize variables"""
+    self.sess = tf.Session(graph=self.g)
+    self.sess.run(self.init)
 
-    def get_model_params(self):
-        # get trainable params.
-        model_names = []
-        model_params = []
-        model_shapes = []
-        with self.graph.as_default():
-            t_vars = tf.trainable_variables()
-            for var in t_vars:
-                param_name = var.name
-                p = self.sess.run(var)
-                model_names.append(param_name)
-                params = np.round(p * 10000).astype(np.int).tolist()
-                model_params.append(params)
-                model_shapes.append(p.shape)
-        return model_params, model_shapes, model_names
+  def close_sess(self):
+    """ Close TensorFlow session """
+    self.sess.close()
 
-    def set_params(self, params):
-        assign_ops = []
-        for param, loaded_p in zip(self.params, params):
-            assign_ops.append(param.assign(loaded_p))
-        self.sess.run(assign_ops)
+  def encode(self, x):
+    return self.sess.run(self.z, feed_dict={self.x: x})
 
-    def get_params(self):
-        return self.sess.run(self.params)
+  def decode(self, z):
+    return self.sess.run(self.y, feed_dict={self.z: z})
 
-    def set_model_params(self, params):
-        with self.graph.as_default():
-            t_vars = tf.trainable_variables()
-            idx = 0
-            for var in t_vars:
-                pshape = self.sess.run(var).shape
-                p = np.array(params[idx])
-                assert pshape == p.shape, "inconsistent shape"
-                assign_op = var.assign(p.astype(np.float) / 10000.)
-                self.sess.run(assign_op)
-                idx += 1
+  def get_model_params(self):
+    # get trainable params.
+    model_names = []
+    model_params = []
+    model_shapes = []
+    with self.g.as_default():
+      t_vars = tf.trainable_variables()
+      for var in t_vars:
+        param_name = var.name
+        p = self.sess.run(var)
+        model_names.append(param_name)
+        params = np.round(p*10000).astype(np.int).tolist()
+        model_params.append(params)
+        model_shapes.append(p.shape)
+    return model_params, model_shapes, model_names
 
-    def save_checkpoint(self, model_save_path):
-        sess = self.sess
-        with self.graph.as_default():
-            saver = tf.train.Saver(tf.global_variables())
-        checkpoint_path = os.path.join(model_save_path, 'vae')
-        tf.logging.info('saving model %s.', checkpoint_path)
-        saver.save(sess, checkpoint_path, 0)  # just keep one
+  def get_random_model_params(self, stdev=0.5):
+    # get random params.
+    _, mshape, _ = self.get_model_params()
+    rparam = []
+    for s in mshape:
+      #rparam.append(np.random.randn(*s)*stdev)
+      rparam.append(np.random.standard_cauchy(s)*stdev) # spice things up!
+    return rparam
 
-    def load_checkpoint(self, checkpoint_path):
-        sess = self.sess
-        with self.graph.as_default():
-            saver = tf.train.Saver(tf.global_variables())
-        ckpt = tf.train.get_checkpoint_state(checkpoint_path)
-        print('loading model', ckpt.model_checkpoint_path)
-        tf.logging.info('Loading model %s.', ckpt.model_checkpoint_path)
-        saver.restore(sess, ckpt.model_checkpoint_path)
+  def set_model_params(self, params):
+    with self.g.as_default():
+      t_vars = tf.trainable_variables()
+      idx = 0
+      for var in t_vars:
+        pshape = self.sess.run(var).shape
+        p = np.array(params[idx])
+        assert pshape == p.shape, "inconsistent shape"
+        assign_op = var.assign(p.astype(np.float)/10000.)
+        self.sess.run(assign_op)
+        idx += 1
 
-    @staticmethod
-    def _save_to_file(save_path, data=None, params=None):
-        if isinstance(save_path, str):
-            _, ext = os.path.splitext(save_path)
-            if ext == "":
-                save_path += ".pkl"
+  def load_json(self, jsonfile='vae.json'):
+    with open(jsonfile, 'r') as f:
+      params = json.load(f)
+    self.set_model_params(params)
 
-            with open(save_path, "wb") as file_:
-                cloudpickle.dump((data, params), file_)
-        else:
-            # Here save_path is a file-like object, not a path
-            cloudpickle.dump((data, params), save_path)
+  def save_json(self, jsonfile='vae.json'):
+    model_params, model_shapes, model_names = self.get_model_params()
+    qparams = []
+    for p in model_params:
+      qparams.append(p)
+    with open(jsonfile, 'wt') as outfile:
+      json.dump(qparams, outfile, sort_keys=True, indent=0, separators=(',', ': '))
 
-    def save(self, save_path):
-        """
-        Save to a pickle file.
-        :param save_path: (str)
-        """
-        data = {
-            "z_size": self.z_size,
-            "batch_size": self.batch_size,
-            "learning_rate": self.learning_rate,
-            "is_training": self.is_training,
-            "kl_tolerance": self.kl_tolerance
-        }
+  def set_random_params(self, stdev=0.5):
+    rparam = self.get_random_model_params(stdev)
+    self.set_model_params(rparam)
 
-        params = self.sess.run(self.params)
+  def save_model(self, model_save_path):
+    sess = self.sess
+    with self.g.as_default():
+      saver = tf.train.Saver(tf.global_variables())
+    checkpoint_path = os.path.join(model_save_path, 'vae')
+    tf.logging.info('saving model %s.', checkpoint_path)
+    saver.save(sess, checkpoint_path, 0) # just keep one
 
-        self._save_to_file(save_path, data=data, params=params)
+  def load_checkpoint(self, checkpoint_path):
+    sess = self.sess
+    with self.g.as_default():
+      saver = tf.train.Saver(tf.global_variables())
+    ckpt = tf.train.get_checkpoint_state(checkpoint_path)
+    print('loading model', ckpt.model_checkpoint_path)
+    tf.logging.info('Loading model %s.', ckpt.model_checkpoint_path)
+    saver.restore(sess, ckpt.model_checkpoint_path)
 
-    @staticmethod
-    def _load_from_file(load_path):
-        if isinstance(load_path, str):
-            if not os.path.exists(load_path):
-                if os.path.exists(load_path + ".pkl"):
-                    load_path += ".pkl"
-                else:
-                    raise ValueError("Error: the file {} could not be found".format(load_path))
 
-            with open(load_path, "rb") as file:
-                data, params = cloudpickle.load(file)
-        else:
-            # Here load_path is a file-like object, not a path
-            data, params = cloudpickle.load(load_path)
 
-        return data, params
-
-    @classmethod
-    def load(cls, load_path, **kwargs):
-        data, params = cls._load_from_file(load_path)
-
-        model = cls(data['z_size'], data['batch_size'],
-                    data['learning_rate'], data['kl_tolerance'],
-                    data['is_training'])
-        model.__dict__.update(data)
-        model.__dict__.update(kwargs)
-
-        restores = []
-        for param, loaded_p in zip(model.params, params):
-            restores.append(param.assign(loaded_p))
-        model.sess.run(restores)
-
-        return model
 
 
 class VAEController:
