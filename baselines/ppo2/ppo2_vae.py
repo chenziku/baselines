@@ -26,7 +26,7 @@ def constfn(val):
 def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2048, ent_coef=0.0, lr=3e-4,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            save_interval=0, load_path=None, model_fn=None, update_fn=None, init_fn=None, mpi_rank_weight=1, comm=None, **network_kwargs):
+            save_interval=0, load_path=None, vae_path=None, model_fn=None, update_fn=None, init_fn=None, mpi_rank_weight=1, comm=None, **network_kwargs):
     '''
     Learn policy using PPO algorithm (https://arxiv.org/abs/1707.06347)
 
@@ -137,6 +137,13 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     nupdates = total_timesteps//nbatch
 
     latent_dim = 100
+
+    # if vae_path is not None:
+    #     if self.load_model():
+    #         logger.info(' [*] Load SUCCESS!\n')
+    #     else:
+    #         logger.info(' [!] Load failed...\n')
+
     vae = CVAE(latent_dim)
     vae_optim = tf.keras.optimizers.Adam(1e-4)
 
@@ -172,6 +179,23 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         smirl_r = compute_loss(vae, x)
 
         tf.print(tf.make_ndarray(smirl_r))
+
+        
+        # samppling images and save them
+        self.sample(self.iter_time)
+
+        # next batch
+        batch_imgs, batch_labels = self.dataset.train_next_batch(batch_size=self.flags.batch_size)
+
+        # train_step
+        loss, summary = self.model.train_step(batch_imgs)
+        self.model.print_info(loss, self.iter_time)
+        self.train_writer.add_summary(summary, self.iter_time)
+        self.train_writer.flush()
+
+        # save model
+        self.save_model(self.iter_time)
+        self.iter_time += 1
 
         # alpha = 1e-4
 

@@ -140,11 +140,20 @@ class ConvVAE(object):
         """ Close tensorflow session """
         self.sess.close()
 
+    def get_mu_var(self, input_tensor):
+
+        mu = self.sess.run(self.mu, feed_dict={self.input_tensor: input_tensor})
+        logvar = self.sess.run(self.logvar, feed_dict={self.input_tensor: input_tensor})
+        var = tf.exp(logvar)
+        # 
+        return mu, var
+
     def encode(self, input_tensor):
         """
         :param input_tensor: (np.ndarray)
         :return: (np.ndarray)
         """
+        # (batch_size, z_size)
         return self.sess.run(self.z, feed_dict={self.input_tensor: input_tensor})
 
     def decode(self, z):
@@ -186,6 +195,8 @@ class ConvVAE(object):
             for var in t_vars:
                 pshape = self.sess.run(var).shape
                 p = np.array(params[idx])
+                # print("pshape", p.shape)
+                # print("var", var)
                 assert pshape == p.shape, "inconsistent shape"
                 assign_op = var.assign(p.astype(np.float) / 10000.)
                 self.sess.run(assign_op)
@@ -274,7 +285,7 @@ class ConvVAE(object):
 
 
 class VAEController:
-    def __init__(self, z_size=512, image_size=(80, 160, 3),
+    def __init__(self, z_size=512, image_size=(64, 64, 3),
                  learning_rate=0.0001, kl_tolerance=0.5,
                  epoch_per_optimization=10, batch_size=64,
                  buffer_size=500):

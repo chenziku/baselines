@@ -16,8 +16,11 @@ except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
 
-tf.enable_eager_execution()
-rgb_weights = [0.2989, 0.5870, 0.1140]
+import sys
+
+if not sys.warnoptions:
+    import warnings
+    warnings.simplefilter("ignore")
 
 def constfn(val):
     def f(_):
@@ -102,12 +105,12 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
 
     # Calculate the batch_size
-    nbatch = nenvs * nsteps
-    nbatch_train = nbatch // nminibatches
+    nbatch = nenvs * nsteps # 16384
+    nbatch_train = nbatch // nminibatches # nminibatches 8
     is_mpi_root = (MPI is None or MPI.COMM_WORLD.Get_rank() == 0)
 
-    # data buffer
-    buf = Buffer(nbatch* 20)
+    # # data buffer
+    # buf = Buffer(nbatch* 20)
 
     # Instantiate the model object (that creates act_model and train_model)
     if model_fn is None:
@@ -165,9 +168,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         # returns, actions, values, neglogpacs, masks (16384,)
         # states None
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
-        
-        # add flattened data into into buffer
-        # obs_grey = np.dot(obs, rgb_weights)
+
+        # print(len(epinfos))
+        # print(masks.sum())
 
         feed = {vae.input_tensor: obs}
         (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
@@ -178,12 +181,41 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             vae.train_op
         ], feed)
 
-        print("VAE: optimization step", (train_step + 1), train_loss, r_loss, kl_loss)
+        # param, shape, model_names = vae_controller.vae.get_model_params()
+
+        # print("param", param)
+        # print("shape", shape)
+        # print("model_name", model_names)
+
+        # model_params, _, _  = vae_controller.vae.get_model_params()
+        # mu, var = np.array(model_params[8]), np.array(model_params[10])
+        # mu, var = vae_controller.vae.get_mu_var(obs)
+
+        # print("mu: ", mu.shape)
+        # print("var: ", var.shape)
+        
+
+        # update mean and variance of latent variables
+
+        # n1 = update * nbatch
+        # mu = (mu + storage_np.mean(axis=0)) / 2
+        # sigma = 
+        
+        print("VAE - optimization step", (train_step + 1), train_loss, r_loss, kl_loss)
 
         # Update params
         vae_controller.set_target_params()
 
-        if update == 2:
+        z = vae_controller.vae.encode(obs)
+        output= vae_controller.vae.decode(z)
+        alpha = 1e-4
+        r_smirl = output.reshape([nbatch, -1]).sum(axis=1)
+
+        # print("output", output.reshape([nbatch, -1]).sum(axis=1))
+        # print("mean", output.reshape([nbatch, -1]).sum(axis=1).mean())
+        # break
+
+        if update == 100:
             break
 
         if eval_env is not None:
@@ -210,7 +242,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
                 for start in range(0, nbatch, nbatch_train):
                     end = start + nbatch_train
                     mbinds = inds[start:end]
-                    slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
+                    slices = (arr[mbinds] for arr in (obs, returns + alpha*r_smirl, masks, actions, values, neglogpacs))
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices))
 
         # Feedforward --> get losses --> update
