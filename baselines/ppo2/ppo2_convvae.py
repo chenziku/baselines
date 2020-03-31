@@ -208,8 +208,10 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
         z = vae_controller.vae.encode(obs)
         output= vae_controller.vae.decode(z)
-        alpha = 1e-4
         r_smirl = output.reshape([nbatch, -1]).sum(axis=1)
+        alpha = 1e-5
+
+        print("Mean SM reward", r_smirl.mean())
 
         # print("output", output.reshape([nbatch, -1]).sum(axis=1))
         # print("mean", output.reshape([nbatch, -1]).sum(axis=1).mean())
