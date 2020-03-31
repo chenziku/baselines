@@ -4,8 +4,7 @@ import numpy as np
 import os.path as osp
 import tensorflow as tf
 from baselines.ppo2.buffer import Buffer
-from baselines.ppo2.cvae import CVAE, compute_apply_gradients, compute_loss
-from baselines.ppo2.ConvVAE import ConvVAE, VAEController
+from baselines.ppo2.cvae import ConvVAE, VAEController
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -208,8 +207,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
         z = vae_controller.vae.encode(obs)
         output= vae_controller.vae.decode(z)
-        r_smirl = output.reshape([nbatch, -1]).sum(axis=1)
-        alpha = 1e-5
+        r_smirl = np.log(output.reshape([nbatch, -1]).sum(axis=1))
+        alpha = 0.01
 
         print("Mean SM reward", r_smirl.mean())
 
