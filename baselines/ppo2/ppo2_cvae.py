@@ -102,7 +102,6 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     ob_space = env.observation_space
     ac_space = env.action_space
 
-
     # Calculate the batch_size
     nbatch = nenvs * nsteps # 16384
     nbatch_train = nbatch // nminibatches # nminibatches 8
@@ -138,7 +137,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
     latent_dim = 100
     vae = ConvVAE(z_size=latent_dim,
-              batch_size=16384,
+              batch_size=nbatch,
               learning_rate=1e-4,
               kl_tolerance=0.5,
               is_training=True,
@@ -173,6 +172,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             vae.global_step,
             vae.train_op
         ], feed)
+
+        del feed
         
         print("STEP", (train_step))
         print("VAE - Training Loss | Reconstruction Loss | KL Loss : ", train_loss, " | ", r_loss, " | ", kl_loss)
@@ -193,6 +194,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             scale_diag=[tf.math.reduce_std(z, 0)]*nbatch)
         alpha = 1e-3
         r_smirl = mvn.log_prob(z).eval() # (16384,)
+
+        del mvn
+        del z
 
         print("Mean SM reward", r_smirl.mean())
 
