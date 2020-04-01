@@ -174,10 +174,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             vae.train_op
         ], feed)
         
-        print("VAE - optimization step", (train_step + 1))
-        print("Training Loss: ", train_loss)
-        print("Reconstruction Loss: ", r_loss)
-        print("KL Loss: ", kl_loss)
+        print("STEP", (train_step))
+        print("VAE - Training Loss | Reconstruction Loss | KL Loss : ", train_loss, " | ", r_loss, " | ", kl_loss)
 
         # Update params
         vae_controller.set_target_params()
@@ -258,12 +256,12 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             checkdir = osp.join(logger.get_dir(), 'checkpoints')
             os.makedirs(checkdir, exist_ok=True)
             savepath = osp.join(checkdir, 'policy_'+'%.5i'%update)
-            print('Savin policy to', savepath)
-            model.save(savepath)
             
-            savepath_vae = osp.join(checkdir, 'vae_'+'%.5i'%update)
-            print('Savin VAE to', savepath_vae)
-            vae.save_checkpoint(savepath_vae)
+            print('Savin policy to', savepath)
+            model.save(savepath)        
+            
+            print('Savin VAE to', checkdir)
+            vae.save_checkpoint(checkdir)
 
     return model
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
