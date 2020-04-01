@@ -3,7 +3,7 @@ import time
 import numpy as np
 import os.path as osp
 import tensorflow as tf
-import tensorflow_probability.python.distributions as tfd
+from baselines.ppo2.buffer import Buffer
 from baselines.ppo2.cvae import ConvVAE, VAEController
 from baselines import logger
 from collections import deque
@@ -108,6 +108,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     nbatch_train = nbatch // nminibatches # nminibatches 8
     is_mpi_root = (MPI is None or MPI.COMM_WORLD.Get_rank() == 0)
 
+    # # data buffer
+    # buf = Buffer(nbatch* 20)
+
     # Instantiate the model object (that creates act_model and train_model)
     if model_fn is None:
         from baselines.ppo2.model import Model
@@ -165,6 +168,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         # states None
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
 
+        # print(len(epinfos))
+        # print(masks.sum())
+
         feed = {vae.input_tensor: obs}
         (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
             vae.loss,
@@ -173,27 +179,42 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             vae.global_step,
             vae.train_op
         ], feed)
+
+        # param, shape, model_names = vae_controller.vae.get_model_params()
+
+        # print("param", param)
+        # print("shape", shape)
+        # print("model_name", model_names)
+
+        # model_params, _, _  = vae_controller.vae.get_model_params()
+        # mu, var = np.array(model_params[8]), np.array(model_params[10])
+        # mu, var = vae_controller.vae.get_mu_var(obs)
+
+        # print("mu: ", mu.shape)
+        # print("var: ", var.shape)
+        
+
+        # update mean and variance of latent variables
+
+        # n1 = update * nbatch
+        # mu = (mu + storage_np.mean(axis=0)) / 2
+        # sigma = 
         
         print("VAE - optimization step", (train_step + 1), train_loss, r_loss, kl_loss)
 
         # Update params
         vae_controller.set_target_params()
-        z = vae_controller.vae.encode(obs) #(16384, 100)
-        
-        # print(mu.mean(axis=0).shape)
-        # print(var.mean(axis=0).shape)
-        # print(z.shape) (16384, 100)
-        # print(tf.math.reduce_mean(z, 0).shape) (100,)
-        # print(tf.math.reduce_variance(z, 0).shape) (100,)
-        
-        # Initialize a multivariate diagnoal Gaussian (for every batch)
-        mvn = tfd.MultivariateNormalDiag(
-            loc=[tf.math.reduce_mean(z, 0)]*nbatch,
-            scale_diag=[tf.math.reduce_std(z, 0)]*nbatch)
-        alpha = 1e-3
-        r_smirl = mvn.log_prob(z).eval() # (16384,)
+
+        z = vae_controller.vae.encode(obs)
+        output= vae_controller.vae.decode(z)
+        r_smirl = np.log(output.reshape([nbatch, -1]).sum(axis=1))
+        alpha = 0.01
 
         print("Mean SM reward", r_smirl.mean())
+
+        # print("output", output.reshape([nbatch, -1]).sum(axis=1))
+        # print("mean", output.reshape([nbatch, -1]).sum(axis=1).mean())
+        # break
 
         if update == 100:
             break
