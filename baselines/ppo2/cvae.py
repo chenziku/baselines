@@ -140,13 +140,12 @@ class ConvVAE(object):
         """ Close tensorflow session """
         self.sess.close()
 
-    def get_mu_var(self, input_tensor):
+    # def get_mu_var(self, input_tensor):
 
-        mu = self.sess.run(self.mu, feed_dict={self.input_tensor: input_tensor})
-        logvar = self.sess.run(self.logvar, feed_dict={self.input_tensor: input_tensor})
-        var = tf.exp(logvar)
-        # 
-        return mu, var
+    #     mu = self.sess.run(self.mu, feed_dict={self.input_tensor: input_tensor})
+    #     logvar = self.sess.run(self.logvar, feed_dict={self.input_tensor: input_tensor})
+    #     var = tf.exp(logvar)
+    #     return mu, var
 
     def encode(self, input_tensor):
         """
