@@ -164,7 +164,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         # states None
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
 
-        feed = {vae.input_tensor: obs}
+        # feed = {vae.input_tensor: obs}
+        feed = {vae_controller.x: obs, }
         (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
             vae.loss,
             vae.r_loss,
@@ -179,7 +180,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         print("VAE - Training Loss | Reconstruction Loss | KL Loss : ", train_loss, " | ", r_loss, " | ", kl_loss)
 
         # Update params
-        vae_controller.set_target_params()
+        # vae_controller.set_target_params()
         z = vae_controller.vae.encode(obs) #(16384, 100)
         
         # print(mu.mean(axis=0).shape)
@@ -262,10 +263,13 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             savepath = osp.join(checkdir, 'policy_'+'%.5i'%update)
             
             print('Savin policy to', savepath)
-            model.save(savepath)        
-            
-            print('Savin VAE to', checkdir)
-            vae.save_checkpoint(checkdir)
+            model.save(savepath)      
+
+            vae_controller.set_target_params()
+            savepath_vae = "checkdir/vae"
+            print('Savin VAE to ', savepath_vae)
+            vae_controller.save(savepath_vae)
+
 
     return model
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
