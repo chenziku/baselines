@@ -153,7 +153,8 @@ class ConvVAE(object):
         :return: (np.ndarray)
         """
         # (batch_size, z_size)
-        return self.sess.run(self.z, feed_dict={self.input_tensor: input_tensor})
+        result = self.sess.run(self.z, feed_dict={self.input_tensor: input_tensor})
+        return result
 
     def decode(self, z):
         """
