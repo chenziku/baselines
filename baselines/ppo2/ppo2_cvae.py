@@ -4,7 +4,7 @@ import numpy as np
 import os.path as osp
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
-from baselines.ppo2.cvae import ConvVAE, VA
+from baselines.ppo2.cvae import ConvVAE
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -27,11 +27,11 @@ def printm():
     print("Gen RAM Free: " + humanize.naturalsize( psutil.virtual_memory().available ), " | Proc size: " + humanize.naturalsize( process.memory_info().rss))
     print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
 
-import sys
+# import sys
 
-if not sys.warnoptions:
-    import warnings
-    warnings.simplefilter("ignore")
+# if not sys.warnoptions:
+#     import warnings
+#     warnings.simplefilter("ignore")
 
 def constfn(val):
     def f(_):
@@ -150,7 +150,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
     latent_dim = 100
     vae = ConvVAE(z_size=latent_dim,
               batch_size=nbatch,
-              learning_rate=1e-4,
+              learning_rate=1e-5,
               kl_tolerance=0.5,
               is_training=True,
               reuse=False,
@@ -176,10 +176,10 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
         # feed = {vae.input_tensor: obs}
         feed = {vae.input_tensor: obs}
-        (train_loss, r_loss, kl_loss, train_step, _) = vae.vae.sess.run([
+        (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
             vae.loss,
             vae.r_loss,
-            vae.kl_loss,
+            vae.kl_loss
             vae.global_step,
             vae.train_op
         ], feed)
@@ -190,25 +190,17 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         printm()
         print("VAE - Training Loss | Reconstruction Loss | KL Loss : ", train_loss, " | ", r_loss, " | ", kl_loss)
 
-        # Update params
-    
-        z = vae.vae.encode(obs) #(16384, 100)
-        
-        # print(mu.mean(axis=0).shape)
-        # print(var.mean(axis=0).shape)
-        # print(z.shape) (16384, 100)
-        # print(tf.math.reduce_mean(z, 0).shape) (100,)
-        # print(tf.math.reduce_variance(z, 0).shape) (100,)
-        
-        # Initialize a multivariate diagnoal Gaussian (for every batch)
+        del train_loss, r_loss, kl_loss, train_step
+
+        # compute smirl reward with a multivariate diagnoal Gaussian (for every batch)
+        z = vae.encode(obs) #(16384, 100)
         mvn = tfd.MultivariateNormalDiag(
             loc=[tf.math.reduce_mean(z, 0)]*nbatch,
             scale_diag=[tf.math.reduce_std(z, 0)]*nbatch)
         alpha = 1e-3
         r_smirl = mvn.log_prob(z).eval() # (16384,)
 
-        del mvn
-        del z
+        del mvn, z
 
         print("Mean SM reward", r_smirl.mean())
 
@@ -280,8 +272,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             print('Savin VAE to ', savepath_vae)
             vae.save_checkpoint(savepath_vae)
 
-
+    vae.close_sess()
     return model
+
 # Avoid division error when calculate the mean (in our case if epinfo is empty returns np.nan, not return an error)
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)

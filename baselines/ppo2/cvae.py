@@ -42,12 +42,12 @@ class ConvVAE(object):
         with tf.variable_scope('conv_vae', reuse=self.reuse):
             if not gpu_mode:
                 with tf.device('/cpu:0'):
-                tf.logging.info('Model using cpu.')
-                self._build_graph()
+                    tf.logging.info('Model using cpu.')
+                    self._build_graph()
             else:
                 with tf.device('/device:GPU:0'):
-                tf.logging.info('Model using gpu.')
-                self._build_graph()
+                    tf.logging.info('Model using gpu.')
+                    self._build_graph()
 
         with self.graph.as_default():
             self.params = tf.trainable_variables()
