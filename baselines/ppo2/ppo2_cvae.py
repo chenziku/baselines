@@ -4,7 +4,7 @@ import numpy as np
 import os.path as osp
 import tensorflow as tf
 import tensorflow_probability.python.distributions as tfd
-from baselines.ppo2.cvae import ConvVAE, VAEController
+from baselines.ppo2.cvae import ConvVAE, VA
 from baselines import logger
 from collections import deque
 from baselines.common import explained_variance, set_global_seeds
@@ -14,6 +14,18 @@ try:
 except ImportError:
     MPI = None
 from baselines.ppo2.runner import Runner
+
+import psutil
+import humanize
+import os
+import GPUtil as GPU
+GPUs = GPU.getGPUs()
+# XXX: only one GPU on Colab and isn’t guaranteed
+gpu = GPUs[0]
+def printm():
+    process = psutil.Process(os.getpid())
+    print("Gen RAM Free: " + humanize.naturalsize( psutil.virtual_memory().available ), " | Proc size: " + humanize.naturalsize( process.memory_info().rss))
+    print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
 
 import sys
 
@@ -141,10 +153,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
               learning_rate=1e-4,
               kl_tolerance=0.5,
               is_training=True,
-              reuse=False)
-
-    vae_controller = VAEController(z_size=latent_dim)
-    vae_controller.vae = vae
+              reuse=False,
+              gpu_mode=True)
 
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
@@ -165,8 +175,8 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
 
         # feed = {vae.input_tensor: obs}
-        feed = {vae_controller.x: obs, }
-        (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
+        feed = {vae.input_tensor: obs}
+        (train_loss, r_loss, kl_loss, train_step, _) = vae.vae.sess.run([
             vae.loss,
             vae.r_loss,
             vae.kl_loss,
@@ -177,11 +187,12 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         del feed
         
         print("STEP", (train_step))
+        printm()
         print("VAE - Training Loss | Reconstruction Loss | KL Loss : ", train_loss, " | ", r_loss, " | ", kl_loss)
 
         # Update params
-        # vae_controller.set_target_params()
-        z = vae_controller.vae.encode(obs) #(16384, 100)
+    
+        z = vae.vae.encode(obs) #(16384, 100)
         
         # print(mu.mean(axis=0).shape)
         # print(var.mean(axis=0).shape)
@@ -263,12 +274,11 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
             savepath = osp.join(checkdir, 'policy_'+'%.5i'%update)
             
             print('Savin policy to', savepath)
-            model.save(savepath)      
+            model.save(savepath)
 
-            vae_controller.set_target_params()
-            savepath_vae = "checkdir/vae"
+            savepath_vae = osp.join(checkdir, "vae")
             print('Savin VAE to ', savepath_vae)
-            vae_controller.save(savepath_vae)
+            vae.save_checkpoint(savepath_vae)
 
 
     return model
