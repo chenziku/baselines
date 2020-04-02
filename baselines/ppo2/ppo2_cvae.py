@@ -179,7 +179,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
         (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
             vae.loss,
             vae.r_loss,
-            vae.kl_loss
+            vae.kl_loss,
             vae.global_step,
             vae.train_op
         ], feed)
