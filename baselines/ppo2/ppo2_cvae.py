@@ -155,6 +155,9 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
               is_training=True,
               reuse=False,
               gpu_mode=True)
+    
+    if vae_path is not None:
+        vae.load_checkpoint(vae_path)
 
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
