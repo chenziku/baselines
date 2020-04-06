@@ -1,2 +1,2 @@
 Algorithms (ppo2, ppo2_normal, ppo2_cvae) from:
-https://github.com/chenziku/smirl-gen
+https://github.com/chenziku/train-procgen
