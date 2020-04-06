@@ -20,18 +20,13 @@ import humanize
 import os
 import GPUtil as GPU
 GPUs = GPU.getGPUs()
-# XXX: only one GPU on Colab and isn’t guaranteed
+
 gpu = GPUs[0]
 def printm():
     process = psutil.Process(os.getpid())
     print("Gen RAM Free: " + humanize.naturalsize( psutil.virtual_memory().available ), " | Proc size: " + humanize.naturalsize( process.memory_info().rss))
     print("GPU RAM Free: {0:.0f}MB | Used: {1:.0f}MB | Util {2:3.0f}% | Total {3:.0f}MB".format(gpu.memoryFree, gpu.memoryUsed, gpu.memoryUtil*100, gpu.memoryTotal))
 
-# import sys
-
-# if not sys.warnoptions:
-#     import warnings
-#     warnings.simplefilter("ignore")
 
 def constfn(val):
     def f(_):
@@ -155,7 +150,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
               is_training=True,
               reuse=False,
               gpu_mode=True)
-    
+
     if vae_path is not None:
         vae.load_checkpoint(vae_path)
 
@@ -197,6 +192,7 @@ def learn(*, network, env, total_timesteps, eval_env = None, seed=None, nsteps=2
 
         # compute smirl reward with a multivariate diagnoal Gaussian (for every batch)
         z = vae.encode(obs) #(16384, 100)
+
         mvn = tfd.MultivariateNormalDiag(
             loc=[tf.math.reduce_mean(z, 0)]*nbatch,
             scale_diag=[tf.math.reduce_std(z, 0)]*nbatch)
